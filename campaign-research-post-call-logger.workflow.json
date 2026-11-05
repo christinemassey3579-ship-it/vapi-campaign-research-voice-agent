@@ -1,0 +1,294 @@
+{
+  "name": "Campaign Research – Post-Call Logger",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-campaign-research",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "64425ade-e8cf-4c12-93f4-f33a955b5c1e",
+      "name": "VAPI End-of-Call Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.message.type }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "end-of-call-report"
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "6d20d636-4f5e-4d2c-93bd-98a3e41b271e",
+      "name": "Is End-of-Call Report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Transcript:\n{{ $json.body.message.artifact?.transcript || $json.body.message.transcript || \"\" }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a transcript analyzer. Extract the following fields from the transcript: prospect_name, awareness, current_tool, priority_level, open_to_followup. Return only these fields as plain text labels and values.\n\nAlso add intent_signal using these rules:\n- Hot: priority_level is High AND open_to_followup is Yes\n- Warm: open_to_followup is Yes but priority_level is Medium or Low, OR priority_level is High but open_to_followup is No\n- Cold: open_to_followup is No and priority_level is Medium, Low or Not answered, or the caller ended the call early\n\nValue rules:\n- awareness: Yes / No / Somewhat. \"I don't know\", \"not sure\" or no clear answer = Not answered.\n- current_tool: the tool name the caller gives (e.g. Zendesk, Freshdesk, Spreadsheets and WhatsApp). If the caller says they use no tool (\"no\", \"nothing\", \"none\"), write None. Never write Yes or No here.\n- priority_level: High / Medium / Low only if the caller gave or confirmed that level. If the assistant said it would note it as not answered, or the caller did not know, write Not answered.\n- open_to_followup: Yes / No. \"Maybe no\" = No, \"maybe yes\" / \"sure\" = Yes.\n- When the assistant confirms an answer back and the caller agrees, use the confirmed value.\nIf a field was not answered, write \"Not answered\". Do not guess."
+        }
+      },
+      "id": "404b6bf2-c3a7-4a87-a656-ff357aef7c5b",
+      "name": "AI Transcript Extractor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        736,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "243eaafa-16ce-4f1d-8266-5fbbf9ddcaf8",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        544
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{ \"prospect_name\": \"Rahul Mehta\", \"awareness\": \"Somewhat\", \"current_tool\": \"Zendesk\", \"priority_level\": \"High\", \"open_to_followup\": \"Yes\", \"intent_signal\": \"Hot\" }"
+      },
+      "id": "4d1c6ad9-006c-461b-ba96-823761d7ab22",
+      "name": "Research Answers Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        864,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Campaign Research Log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.setZone('Asia/Kolkata').toFormat('dd LLL yyyy, hh:mm a') }}",
+            "Prospect Name": "={{ $json.output.prospect_name }}",
+            "Awareness": "={{ $json.output.awareness }}",
+            "Current Tool": "={{ $json.output.current_tool }}",
+            "Priority Level": "={{ $json.output.priority_level }}",
+            "Open to Follow-up": "={{ $json.output.open_to_followup }}",
+            "Intent Signal": "={{ $json.output.intent_signal }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Prospect Name",
+              "displayName": "Prospect Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Awareness",
+              "displayName": "Awareness",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Tool",
+              "displayName": "Current Tool",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Priority Level",
+              "displayName": "Priority Level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Open to Follow-up",
+              "displayName": "Open to Follow-up",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Intent Signal",
+              "displayName": "Intent Signal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6613623d-b4a8-487d-b88e-b7ca2966c273",
+      "name": "Log Call to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1056,
+        304
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Campaign Research – Post-Call Logger\nVAPI posts every server message here. Only **end-of-call-report** continues. Gemini extracts the 5 answers + intent signal from the transcript, then one row is appended to **Campaign Research Log**.",
+        "color": 7,
+        "width": 760,
+        "height": 200
+      },
+      "id": "c78fd10f-3c15-4eab-b7e3-8cffdeeb5152",
+      "name": "Sticky Note 96d1f6ac",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        32
+      ]
+    }
+  ],
+  "connections": {
+    "VAPI End-of-Call Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is End-of-Call Report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is End-of-Call Report?": {
+      "main": [
+        [
+          {
+            "node": "AI Transcript Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Transcript Extractor": {
+      "main": [
+        [
+          {
+            "node": "Log Call to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Transcript Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Answers Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Transcript Extractor",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {}
+}
